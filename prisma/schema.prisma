@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Cart {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   Bytes    @db.Binary(16)
+  cartToken  String   @unique
+  currency   String   @db.VarChar(10)
+  totalPrice Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, cartToken], name: "tenantId_cartToken")
+}
+
+model Tenant {
+  id            Bytes          @id @db.Binary(16)
+  name          String
+  createdAt     DateTime       @default(now())
+  checkouts     Checkout[]
+  customers     Customer[]
+  orders        Order[]
+  products      Product[]
+  stores        Store[]
+  users         TenantUser[]
+  webhookEvents WebhookEvent[]
+}
+
+model Store {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    Bytes    @db.Binary(16)
+  shopDomain  String   @db.VarChar(255)
+  accessToken String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shopDomain])
+  @@index([tenantId, createdAt])
+}
+
+model Customer {
+  id                BigInt   @id @default(autoincrement())
+  tenantId          Bytes    @db.Binary(16)
+  shopifyCustomerId BigInt
+  email             String?  @db.VarChar(255)
+  firstName         String?  @db.VarChar(120)
+  lastName          String?  @db.VarChar(120)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shopifyCustomerId])
+  @@index([tenantId, createdAt])
+}
+
+model Product {
+  id               BigInt   @id @default(autoincrement())
+  tenantId         Bytes    @db.Binary(16)
+  shopifyProductId BigInt
+  title            String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  handle           String?  @db.VarChar(255)
+  status           String?  @db.VarChar(50)
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shopifyProductId], name: "tenantId_shopifyProductId")
+  @@index([tenantId, createdAt])
+  @@index([tenantId, handle])
+}
+
+model Order {
+  id                BigInt      @id @default(autoincrement())
+  tenantId          Bytes       @db.Binary(16)
+  shopifyOrderId    BigInt
+  customerShopifyId BigInt?
+  totalPrice        Decimal     @db.Decimal(12, 2)
+  currency          String      @db.Char(3)
+  status            OrderStatus
+  createdAt         DateTime
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shopifyOrderId])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model WebhookEvent {
+  tenantId   Bytes    @db.Binary(16)
+  eventId    String   @db.VarChar(64)
+  eventType  String   @db.VarChar(64)
+  receivedAt DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, eventId])
+}
+
+model Checkout {
+  id                BigInt    @id @default(autoincrement())
+  tenantId          Bytes     @db.Binary(16)
+  shopifyCheckoutId BigInt
+  currency          String    @db.VarChar(10)
+  totalPrice        Decimal   @db.Decimal(12, 2)
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, shopifyCheckoutId], name: "tenantId_shopifyCheckoutId")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId], map: "Account_userId_fkey")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "Session_userId_fkey")
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String?
+  email         String       @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  tenantUsers   TenantUser[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model TenantUser {
+  id       String   @id @default(cuid())
+  tenantId Bytes    @db.Binary(16)
+  userId   String
+  role     UserRole @default(viewer)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId], map: "TenantUser_userId_fkey")
+}
+
+enum OrderStatus {
+  pending
+  fulfilled
+  cancelled
+}
+
+enum UserRole {
+  admin
+  editor
+  viewer
+}
